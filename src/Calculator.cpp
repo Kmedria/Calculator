@@ -7,15 +7,54 @@
 // The Calculator can process * as multiply and / as divide.
 // The Calculator can tell where your equation has a mistake (somewhere where the calculator detects a char that it does not recognize), but the user must figure out the mistake at given location
 // The calculator understands brackets and is able to process them follwing BODMASS.
+// The calculator can process sin, cos and tan. It requires the value to be in a bracket like sin(x) and x is assumed to be in radians.
+
+// Trig equations are caluculated using Maclaurin series approximation. The accuracy is determined by the trigAccuracy variable.
 
 int getInput(char* text, int maxSize);
 double solve(char* text, int size, bool* valid);
 bool findText(char* source, int sourceSize, const char* search, int searchTextSize);
 int pos(char* source, int sourceSize, const char* search, int searchTextSize);
 
+int trigAccuracy = 10;
 
+float fac(int input) {
+	if (input < 0) {
+		return -1;
+	}
+	if (input == 0) {
+		return 1;
+	}
+	float val = 1;
+	for (int index = 1; index < input+1; index++) {
+		val *= index;
+	}
+	return val;
+}
 
+// calculated using Maclaurin series approximation, up to trigAccuracy number of terms.
+float customSinFunc(float input) {
+	float val = 0;
+	int sign = 1;
+	for (int index = 1; index < trigAccuracy*2; index += 2) {
+		val += sign * (pow(input, index))/fac(index);
+		sign *= -1;
+	}
+	return val;
+}
 
+// calculated using Maclaurin series approximation, up to trigAccuracy number of terms.
+float customCosFunc(float input) {
+	float val = 0;
+	int sign = 1;
+	for (int index = 0; index < trigAccuracy * 2; index += 2) {
+		val += sign * (pow(input, index)) / fac(index);
+		sign *= -1;
+	}
+	return val;
+}
+
+// tan is calculated from sin/cos
 
 int main() {
 
@@ -147,6 +186,11 @@ double solve(char* text, int startingPoint, int end, bool* validEqn) {
 	bool keepSearching = true;
 	//counter = counter;
 	while (keepSearching) {
+		if (depth < 0) {
+			*validEqn = false;
+			std::cerr << " You may not have more ) brackets than (. There must one ( bracket that come before for each )." << std::endl;
+			return 0;
+		}
 		if ('(' == text[counter]) {
 			depth++;
 		}
@@ -158,15 +202,33 @@ double solve(char* text, int startingPoint, int end, bool* validEqn) {
 		} else {
 			counter++;
 		}
-		if (counter >= end) {
+		if (!(counter < end)) {
 			keepSearching = false;
 		}
+	}
+
+	if (depth != 0) {
+		*validEqn = false;
+		std::cerr << "The equation does not have an equal number of brackets.";
+		if (depth > 0) {
+			std::cerr << " There are too many ( brackets." << std::endl;
+			return 0;
+		}
+		std::cerr << " There are too many ) brackets." << std::endl;
+		return 0;
 	}
 
 	if (counter < end ) {
 		return solve(text, startingPoint, counter, validEqn) + solve(text, counter + 1, end, validEqn);
 	}
 	else {
+
+		if (')' == text[startingPoint]) {
+			*validEqn = false;
+			std::cerr << " You may not start with a ) bracket. There must be a ( bracket that comes before it." << std::endl;
+			return 0;
+		}
+
 		if ('(' == text[startingPoint]) {
 			depth = 1;
 			int count = startingPoint+1;
@@ -181,8 +243,21 @@ double solve(char* text, int startingPoint, int end, bool* validEqn) {
 					count++;
 				}
 			}
-			if (count + 1 < end) return solve(text, startingPoint + 1, count, validEqn) + solve(text,  count + 1, end, validEqn);
-			else return solve(text, startingPoint + 1, count, validEqn);
+			if (count + 1 < end) {
+				if ('*' == text[count + 1]) {
+					return solve(text, startingPoint, count+1, validEqn) * solve(text, count + 2, end, validEqn);
+				} else if ('/' == text[count + 1]) {
+
+					float denom = solve(text, count + 2, end, validEqn);
+					if (0 == denom) {
+						*validEqn = false;
+						std::cerr << "Division by 0 has occured." << std::endl;
+						return 0;
+					}
+					return solve(text, startingPoint, count+1, validEqn) / denom;
+				} else return solve(text, startingPoint, count+1, validEqn) + solve(text, count + 2, end, validEqn);
+
+			} else return solve(text, startingPoint + 1, count, validEqn);
 		} else {
 
 			char* tempChar = new char[1];
@@ -226,6 +301,56 @@ double solve(char* text, int startingPoint, int end, bool* validEqn) {
 
 			delete[] tempChar;
 
+			char* sinChar = new char[3];
+			sinChar[0] = 's';
+			sinChar[1] = 'i';
+			sinChar[2] = 'n';
+
+			char* cosChar = new char[3];
+			cosChar[0] = 'c';
+			cosChar[1] = 'o';
+			cosChar[2] = 's';
+
+			char* tanChar = new char[3];
+			tanChar[0] = 't';
+			tanChar[1] = 'a';
+			tanChar[2] = 'n';
+
+			if (findText(text, sinChar, 3, startingPoint, end)) {
+				float val = solve(text, startingPoint + 3, end, validEqn);
+				delete[] sinChar;
+				delete[] cosChar;
+				delete[] tanChar;
+				return sign * customSinFunc(val);
+			}
+
+			if (findText(text, cosChar, 3, startingPoint, end)) {
+				float val = solve(text, startingPoint + 3, end, validEqn);
+				delete[] sinChar;
+				delete[] cosChar;
+				delete[] tanChar;
+				return sign * customCosFunc(val);
+			}
+
+			if (findText(text, tanChar, 3, startingPoint, end)) {
+				float val = solve(text, startingPoint + 3, end, validEqn);
+				float valNum = customSinFunc(val);
+				float valDenum = customCosFunc(val);
+				delete[] sinChar;
+				delete[] cosChar;
+				delete[] tanChar;
+				if (0 == valDenum) {
+					*validEqn = false;
+					std::cerr << "Division by 0 has occured when calculating tan(" << val << "). " << std::endl;
+					return 0;
+				}
+				return sign * valNum/valDenum;
+			}
+
+			delete[] sinChar;
+			delete[] cosChar;
+			delete[] tanChar;
+
 			if (positionOfDot>0) {
 				float fractionPart = solve(text, positionOfDot+1, end, validEqn);
 				float wholePart = solve(text, startingPoint, positionOfDot, validEqn);
@@ -263,10 +388,22 @@ int getInput(char* text, int maxSize) {
 	int size = 0;
 	while (10 != std::cin.peek()) {
 
-		if ('-' == std::cin.peek() && (!('(' == text[size-1]) && !(0 == size) && !('-' == text[size-1 ]))) {
+		if ('-' == std::cin.peek() && (!(0 == size) && !('(' == text[size-1]) && !('-' == text[size-1 ]))) {
 			text[size] = '+';
 			size++;
-		} else  if ('(' == std::cin.peek() && isDigit(text[size-1])) {
+		} else if ('(' == std::cin.peek() && size > 0 && isDigit(text[size - 1])) {
+			text[size] = '*';
+			size++;
+		} else if (isDigit(std::cin.peek()) && size > 0 && ')' == text[size - 1]) {
+			text[size] = '*';
+			size++;
+		} else if ('s' == std::cin.peek() && size > 0 && ((isDigit(text[size - 1]) || ')' == text[size - 1]))) {
+			text[size] = '*';
+			size++;
+		} else if ('c' == std::cin.peek() && size > 0 && (isDigit(text[size - 1]) || ')' == text[size - 1])) {
+			text[size] = '*';
+			size++;
+		} else if ('t' == std::cin.peek() && size > 0 && (isDigit(text[size - 1]) || ')' == text[size - 1])) {
 			text[size] = '*';
 			size++;
 		}
